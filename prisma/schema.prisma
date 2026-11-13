@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  MEMBER
+}
+
+enum TxType {
+  INCOME
+  EXPENSE
+}
+
+enum AccountType {
+  CASH
+  BANK
+  UPI
+  CARD
+}
+
+enum Frequency {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+// One family / home. Everything belongs to a household.
+model Household {
+  inviteCode String   @unique @default(cuid())
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  users        User[]
+  accounts     Account[]
+  categories   Category[]
+  transactions Transaction[]
+  budgets      Budget[]
+  bills        RecurringBill[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(MEMBER)
+  createdAt    DateTime @default(now())
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  transactions Transaction[]
+
+  @@index([householdId])
+}
+
+// Cash, bank, UPI wallet, credit card
+model Account {
+  id             String      @id @default(cuid())
+  name           String
+  type           AccountType
+  openingBalance Decimal     @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime    @default(now())
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  transactions Transaction[]
+  bills        RecurringBill[]
+
+  @@index([householdId])
+}
+
+model Category {
+  id    String @id @default(cuid())
+  name  String
+  type  TxType
+  color String @default("#6366f1")
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  transactions Transaction[]
+  budgets      Budget[]
+  bills        RecurringBill[]
+
+  @@unique([householdId, name, type])
+}
+
+model Transaction {
+  id     String   @id @default(cuid())
+  type   TxType
+  amount Decimal  @db.Decimal(12, 2)
+  date   DateTime
+  note   String?
+  createdAt DateTime @default(now())
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id])
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  // who paid / received
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([householdId, date])
+  @@index([categoryId])
+}
+
+// Monthly limit per category. month = first day of that month.
+model Budget {
+  id     String   @id @default(cuid())
+  month  DateTime
+  amount Decimal  @db.Decimal(12, 2)
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, categoryId, month])
+}
+
+// Rent, EMI, internet, etc.
+model RecurringBill {
+  id        String    @id @default(cuid())
+  name      String
+  amount    Decimal   @db.Decimal(12, 2)
+  frequency Frequency @default(MONTHLY)
+  nextDue   DateTime
+  active    Boolean   @default(true)
+
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  accountId String?
+  account   Account? @relation(fields: [accountId], references: [id])
+
+  @@index([householdId, nextDue])
+}
+
