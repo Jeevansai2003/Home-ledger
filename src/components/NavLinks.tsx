@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ArrowLeftRight, PiggyBank, Landmark } from "lucide-react";
+import { LayoutDashboard, ArrowLeftRight, PiggyBank, Landmark, ShieldCheck } from "lucide-react";
 
 const items = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/budgets", label: "Budgets", icon: PiggyBank },
   { href: "/settings", label: "Accounts", icon: Landmark },
+  { href: "/account", label: "Security", icon: ShieldCheck },
 ];
 
 export default function NavLinks({ variant }: { variant: "sidebar" | "tabs" }) {
@@ -42,7 +43,7 @@ export default function NavLinks({ variant }: { variant: "sidebar" | "tabs" }) {
   }
 
   return (
-    <ul className="grid grid-cols-4">
+    <ul className="grid grid-cols-5">
       {items.map(({ href, label, icon: Icon }) => {
         const active = isActive(href);
         return (
@@ -50,7 +51,7 @@ export default function NavLinks({ variant }: { variant: "sidebar" | "tabs" }) {
             <Link
               href={href}
               aria-current={active ? "page" : undefined}
-              className={`flex flex-col items-center gap-1 py-2.5 text-xs transition-colors ${
+              className={`flex flex-col items-center gap-1 py-2.5 text-[11px] transition-colors ${
                 active ? "font-semibold text-brand" : "text-muted"
               }`}
             >

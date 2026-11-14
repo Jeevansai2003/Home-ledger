@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${figtree.variable} ${bricolage.variable}`}>
+    <html lang="en" data-scroll-behavior="smooth" className={`${figtree.variable} ${bricolage.variable}`}>
       <body>{children}</body>
     </html>
   );

@@ -1,19 +1,18 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { Pencil, Trash2 } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import TransactionForm from "@/components/TransactionForm";
 import {
-  addTransactionAction,
-  deleteTransactionAction,
-} from "@/app/actions/transactions";
+  currentMonth, formatDayHeading, formatINR, isValidMonth, monthLabel, monthRange,
+} from "@/lib/format";
+import { addTransactionAction, deleteTransactionAction } from "@/app/actions/transactions";
+import ConfirmSubmit from "@/components/ConfirmSubmit";
+import MonthSwitcher from "@/components/MonthSwitcher";
+import PageHeader from "@/components/PageHeader";
+import TransactionForm from "@/components/TransactionForm";
 
-const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" });
-
-function shiftMonth(month: string, delta: number) {
-  const [y, m] = month.split("-").map(Number);
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return d.toISOString().slice(0, 7);
-}
+export const metadata: Metadata = { title: "Transactions" };
 
 export default async function TransactionsPage({
   searchParams,
@@ -22,14 +21,10 @@ export default async function TransactionsPage({
 }) {
   const user = await requireUser();
   const sp = await searchParams;
-
-  const month =
-    sp.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.month)
-      ? sp.month
-      : new Date().toISOString().slice(0, 7);
-  const start = new Date(`${month}-01T00:00:00Z`);
-  const end = new Date(`${shiftMonth(month, 1)}-01T00:00:00Z`);
   const householdId = user.householdId;
+
+  const month = isValidMonth(sp.month) ? sp.month : currentMonth();
+  const { start, end } = monthRange(month);
 
   const [transactions, categories, accounts, members] = await Promise.all([
     prisma.transaction.findMany({
@@ -42,107 +37,120 @@ export default async function TransactionsPage({
     prisma.user.findMany({ where: { householdId }, orderBy: { name: "asc" } }),
   ]);
 
-  const income = transactions
-    .filter((t) => t.type === "INCOME")
-    .reduce((s, t) => s + Number(t.amount), 0);
-  const expense = transactions
-    .filter((t) => t.type === "EXPENSE")
-    .reduce((s, t) => s + Number(t.amount), 0);
+  const income = transactions.filter((t) => t.type === "INCOME").reduce((s, t) => s + Number(t.amount), 0);
+  const expense = transactions.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + Number(t.amount), 0);
+  const net = income - expense;
 
-  const label = start.toLocaleDateString("en-IN", {
-    month: "long", year: "numeric", timeZone: "UTC",
-  });
+  const groups: { key: string; date: Date; items: typeof transactions }[] = [];
+  for (const t of transactions) {
+    const key = t.date.toISOString().slice(0, 10);
+    const last = groups[groups.length - 1];
+    if (last?.key === key) last.items.push(t);
+    else groups.push({ key, date: t.date, items: [t] });
+  }
+
+  const iconBtn =
+    "flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-canvas hover:text-ink";
 
   return (
-    <main className="mx-auto max-w-4xl space-y-6 p-6">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Transactions</h1>
-        <Link href="/dashboard" className="text-sm text-indigo-600 underline">← Dashboard</Link>
-      </header>
+    <main className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
+      <PageHeader title="Transactions" description="Every rupee in and out, for the whole household.">
+        <MonthSwitcher basePath="/transactions" month={month} />
+      </PageHeader>
 
-      <TransactionForm
-        action={addTransactionAction}
-        categories={categories}
-        accounts={accounts}
-        members={members}
-        currentUserId={user.id}
-        submitLabel="Add transaction"
-        error={sp.error}
-      />
+      <div className="mt-8 grid gap-6 lg:grid-cols-5">
+        {/* Add form */}
+        <section className="card self-start p-5 lg:sticky lg:top-6 lg:order-2 lg:col-span-2" aria-labelledby="add-heading">
+          <h2 id="add-heading" className="mb-4 text-base font-semibold">Add a transaction</h2>
+          <TransactionForm
+            action={addTransactionAction}
+            categories={categories.map((c) => ({ id: c.id, name: c.name, type: c.type }))}
+            accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}
+            members={members.map((m) => ({ id: m.id, name: m.name }))}
+            currentUserId={user.id}
+            today={new Date().toISOString().slice(0, 10)}
+            submitLabel="Add transaction"
+            pendingText="Adding…"
+            error={sp.error}
+          />
+        </section>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <Link href={`/transactions?month=${shiftMonth(month, -1)}`}
-            className="rounded border px-3 py-1 text-sm hover:bg-gray-100">←</Link>
-          <h2 className="font-medium">{label}</h2>
-          <Link href={`/transactions?month=${shiftMonth(month, 1)}`}
-            className="rounded border px-3 py-1 text-sm hover:bg-gray-100">→</Link>
-        </div>
+        {/* List */}
+        <section className="space-y-4 lg:order-1 lg:col-span-3" aria-label={`Transactions in ${monthLabel(month)}`}>
+          <dl className="card grid grid-cols-3 divide-x divide-line">
+            <div className="px-4 py-3">
+              <dt className="text-xs text-muted">Income</dt>
+              <dd className="num mt-0.5 font-semibold text-income">{formatINR(income)}</dd>
+            </div>
+            <div className="px-4 py-3">
+              <dt className="text-xs text-muted">Expenses</dt>
+              <dd className="num mt-0.5 font-semibold text-expense">{formatINR(expense)}</dd>
+            </div>
+            <div className="px-4 py-3">
+              <dt className="text-xs text-muted">Left</dt>
+              <dd className={`num mt-0.5 font-semibold ${net >= 0 ? "text-ink" : "text-expense"}`}>
+                {formatINR(net)}
+              </dd>
+            </div>
+          </dl>
 
-        <div className="grid grid-cols-3 gap-3 text-center">
-          <div className="rounded-xl bg-green-50 p-3">
-            <p className="text-xs text-gray-500">Income</p>
-            <p className="font-semibold text-green-700">{inr.format(income)}</p>
-          </div>
-          <div className="rounded-xl bg-red-50 p-3">
-            <p className="text-xs text-gray-500">Expenses</p>
-            <p className="font-semibold text-red-700">{inr.format(expense)}</p>
-          </div>
-          <div className="rounded-xl bg-indigo-50 p-3">
-            <p className="text-xs text-gray-500">Savings</p>
-            <p className="font-semibold text-indigo-700">{inr.format(income - expense)}</p>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto rounded-xl bg-white shadow">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b text-gray-500">
-              <tr>
-                <th className="p-3">Date</th>
-                <th className="p-3">Category</th>
-                <th className="p-3">Account</th>
-                <th className="p-3">By</th>
-                <th className="p-3">Note</th>
-                <th className="p-3 text-right">Amount</th>
-                <th className="p-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.length === 0 && (
-                <tr><td colSpan={7} className="p-6 text-center text-gray-400">
-                  No transactions this month
-                </td></tr>
-              )}
-              {transactions.map((t) => (
-                <tr key={t.id} className="border-b last:border-0">
-                  <td className="p-3 whitespace-nowrap">
-                    {t.date.toLocaleDateString("en-IN", {
-                      day: "2-digit", month: "short", timeZone: "UTC",
-                    })}
-                  </td>
-                  <td className="p-3">{t.category.name}</td>
-                  <td className="p-3">{t.account.name}</td>
-                  <td className="p-3">{t.user.name}</td>
-                  <td className="p-3 text-gray-500">{t.note}</td>
-                  <td className={`p-3 text-right whitespace-nowrap ${
-                    t.type === "INCOME" ? "text-green-700" : "text-red-700"
-                  }`}>
-                    {t.type === "INCOME" ? "+" : "-"}{inr.format(Number(t.amount))}
-                  </td>
-                  <td className="p-3 whitespace-nowrap">
-                    <Link href={`/transactions/${t.id}/edit`}
-                      className="mr-3 text-indigo-600 underline">Edit</Link>
-                    <form action={deleteTransactionAction} className="inline">
-                      <input type="hidden" name="id" value={t.id} />
-                      <button className="text-red-600 underline">Delete</button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+          {groups.length === 0 ? (
+            <div className="card px-5 py-12 text-center">
+              <p className="font-medium">No transactions in {monthLabel(month)}</p>
+              <p className="mx-auto mt-1 max-w-xs text-sm text-muted">
+                Use the form to add an expense or income. It will appear here straight away.
+              </p>
+            </div>
+          ) : (
+            groups.map((g) => (
+              <div key={g.key}>
+                <h3 className="mb-2 px-1 text-sm font-medium text-muted">{formatDayHeading(g.date)}</h3>
+                <ul className="card divide-y divide-line">
+                  {g.items.map((t) => (
+                    <li key={t.id} className="flex items-center gap-3 px-4 py-3">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ background: t.category.color }}
+                        aria-hidden="true"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{t.category.name}</p>
+                        <p className="truncate text-xs text-muted">
+                          {t.account.name}, {t.user.name}
+                          {t.note ? `, ${t.note}` : ""}
+                        </p>
+                      </div>
+                      <p
+                        className={`num shrink-0 text-sm font-semibold ${
+                          t.type === "INCOME" ? "text-income" : "text-expense"
+                        }`}
+                      >
+                        {t.type === "INCOME" ? "+" : "-"}
+                        {formatINR(Number(t.amount))}
+                      </p>
+                      <div className="flex shrink-0 items-center">
+                        <Link href={`/transactions/${t.id}/edit`} className={iconBtn} aria-label="Edit transaction" title="Edit">
+                          <Pencil size={16} aria-hidden="true" />
+                        </Link>
+                        <form action={deleteTransactionAction}>
+                          <input type="hidden" name="id" value={t.id} />
+                          <ConfirmSubmit
+                            message="Delete this transaction? This cannot be undone."
+                            label="Delete transaction"
+                            className={`${iconBtn} hover:bg-expense-soft hover:text-expense`}
+                          >
+                            <Trash2 size={16} aria-hidden="true" />
+                          </ConfirmSubmit>
+                        </form>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          )}
+        </section>
+      </div>
     </main>
   );
 }

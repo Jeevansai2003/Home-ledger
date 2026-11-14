@@ -1,14 +1,26 @@
-import Link from "next/link";
+import type { Metadata } from "next";
+import { Banknote, CreditCard, Landmark, Smartphone, Trash2 } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { formatINR } from "@/lib/format";
 import {
   addAccountAction,
-  deleteAccountAction,
   addCategoryAction,
+  deleteAccountAction,
   deleteCategoryAction,
 } from "@/app/actions/settings";
+import ConfirmSubmit from "@/components/ConfirmSubmit";
+import PageHeader from "@/components/PageHeader";
+import SubmitButton from "@/components/SubmitButton";
 
-const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" });
+export const metadata: Metadata = { title: "Accounts and categories" };
+
+const typeInfo = {
+  BANK: { label: "Bank", icon: Landmark },
+  CASH: { label: "Cash", icon: Banknote },
+  UPI: { label: "UPI", icon: Smartphone },
+  CARD: { label: "Card", icon: CreditCard },
+} as const;
 
 export default async function SettingsPage({
   searchParams,
@@ -39,92 +51,146 @@ export default async function SettingsPage({
     return b;
   }
 
-  const expenseCats = categories.filter((c) => c.type === "EXPENSE");
-  const incomeCats = categories.filter((c) => c.type === "INCOME");
+  const groups = [
+    { title: "Expense categories", list: categories.filter((c) => c.type === "EXPENSE") },
+    { title: "Income categories", list: categories.filter((c) => c.type === "INCOME") },
+  ];
+  const dangerBtn =
+    "flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-expense-soft hover:text-expense";
 
   return (
-    <main className="mx-auto max-w-3xl space-y-8 p-6">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Accounts & Categories</h1>
-        <Link href="/dashboard" className="text-sm text-indigo-600 underline">← Dashboard</Link>
-      </header>
+    <main className="mx-auto max-w-4xl space-y-10 px-5 py-8 sm:px-8">
+      <PageHeader
+        title="Accounts and categories"
+        description="Where your money lives, and the labels you sort it by."
+      />
 
-      {error && <p className="rounded bg-red-50 p-3 text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="alert-error">{error}</p>}
 
-      {/* ACCOUNTS */}
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Accounts</h2>
-        <ul className="divide-y rounded-xl bg-white shadow">
-          {accounts.map((a) => (
-            <li key={a.id} className="flex items-center justify-between p-3 text-sm">
-              <span>
-                {a.name} <span className="text-gray-400">({a.type})</span>
-              </span>
-              <span className="flex items-center gap-4">
-                <span className="font-medium">{inr.format(balance(a.id, Number(a.openingBalance)))}</span>
-                <form action={deleteAccountAction}>
-                  <input type="hidden" name="id" value={a.id} />
-                  <button className="text-red-600 underline">Delete</button>
-                </form>
-              </span>
-            </li>
-          ))}
-        </ul>
+      {/* Accounts */}
+      <section aria-labelledby="accounts-heading" className="grid gap-6 lg:grid-cols-5">
+        <div className="lg:col-span-3">
+          <h2 id="accounts-heading" className="mb-3 text-lg font-semibold">Accounts</h2>
+          <ul className="card divide-y divide-line">
+            {accounts.map((a) => {
+              const { label, icon: Icon } = typeInfo[a.type];
+              const bal = balance(a.id, Number(a.openingBalance));
+              return (
+                <li key={a.id} className="flex items-center gap-3 px-4 py-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand">
+                    <Icon size={18} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{a.name}</p>
+                    <p className="text-xs text-muted">{label}</p>
+                  </div>
+                  <p className={`num shrink-0 text-sm font-semibold ${bal < 0 ? "text-expense" : ""}`}>
+                    {formatINR(bal)}
+                  </p>
+                  <form action={deleteAccountAction}>
+                    <input type="hidden" name="id" value={a.id} />
+                    <ConfirmSubmit
+                      message={`Delete the account "${a.name}"? This cannot be undone.`}
+                      label={`Delete account ${a.name}`}
+                      className={dangerBtn}
+                    >
+                      <Trash2 size={16} aria-hidden="true" />
+                    </ConfirmSubmit>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-2 text-xs text-muted">
+            An account with transactions cannot be deleted. Balance is the opening balance plus income minus expenses.
+          </p>
+        </div>
 
-        <form action={addAccountAction} className="grid gap-2 rounded-xl bg-white p-3 shadow sm:grid-cols-4">
-          <input name="name" placeholder="Account name" required className="rounded border p-2 sm:col-span-2" />
-          <select name="type" className="rounded border p-2">
-            <option value="BANK">Bank</option>
-            <option value="CASH">Cash</option>
-            <option value="UPI">UPI</option>
-            <option value="CARD">Card</option>
-          </select>
-          <input name="openingBalance" type="number" step="0.01" placeholder="Opening ₹"
-            className="rounded border p-2" />
-          <button className="rounded bg-indigo-600 p-2 text-white hover:bg-indigo-700 sm:col-span-4">
-            Add account
-          </button>
+        <form action={addAccountAction} className="card space-y-4 self-start p-5 lg:col-span-2">
+          <h3 className="text-base font-semibold">Add an account</h3>
+          <div>
+            <label htmlFor="acc-name" className="field-label">Name</label>
+            <input id="acc-name" name="name" required placeholder="e.g. HDFC savings" className="input" />
+          </div>
+          <div>
+            <label htmlFor="acc-type" className="field-label">Type</label>
+            <select id="acc-type" name="type" className="input" defaultValue="BANK">
+              <option value="BANK">Bank</option>
+              <option value="CASH">Cash</option>
+              <option value="UPI">UPI</option>
+              <option value="CARD">Card</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="acc-open" className="field-label">Opening balance</label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden="true">₹</span>
+              <input id="acc-open" name="openingBalance" type="number" inputMode="decimal" step="0.01" placeholder="0" className="input num pl-8" />
+            </div>
+          </div>
+          <SubmitButton pendingText="Adding…">Add account</SubmitButton>
         </form>
       </section>
 
-      {/* CATEGORIES */}
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Categories</h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {[
-            { title: "Expenses", list: expenseCats },
-            { title: "Income", list: incomeCats },
-          ].map(({ title, list }) => (
-            <div key={title} className="rounded-xl bg-white p-3 shadow">
-              <h3 className="mb-2 text-sm font-medium text-gray-500">{title}</h3>
-              <ul className="divide-y text-sm">
+      {/* Categories */}
+      <section aria-labelledby="categories-heading" className="grid gap-6 lg:grid-cols-5">
+        <div className="space-y-6 lg:col-span-3">
+          <h2 id="categories-heading" className="text-lg font-semibold">Categories</h2>
+          {groups.map(({ title, list }) => (
+            <div key={title}>
+              <h3 className="mb-2 text-sm font-medium text-muted">{title}</h3>
+              <ul className="card divide-y divide-line">
+                {list.length === 0 && (
+                  <li className="px-4 py-3 text-sm text-muted">None yet.</li>
+                )}
                 {list.map((c) => (
-                  <li key={c.id} className="flex items-center justify-between py-2">
-                    <span className="flex items-center gap-2">
-                      <span className="inline-block h-3 w-3 rounded-full" style={{ background: c.color }} />
-                      {c.name}
-                    </span>
+                  <li key={c.id} className="flex items-center gap-3 px-4 py-2.5">
+                    <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: c.color }} aria-hidden="true" />
+                    <span className="flex-1 truncate text-sm font-medium">{c.name}</span>
                     <form action={deleteCategoryAction}>
                       <input type="hidden" name="id" value={c.id} />
-                      <button className="text-red-600 underline">Delete</button>
+                      <ConfirmSubmit
+                        message={`Delete the category "${c.name}"? This cannot be undone.`}
+                        label={`Delete category ${c.name}`}
+                        className={dangerBtn}
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                      </ConfirmSubmit>
                     </form>
                   </li>
                 ))}
               </ul>
             </div>
           ))}
+          <p className="text-xs text-muted">A category that is used by a transaction or bill cannot be deleted.</p>
         </div>
 
-        <form action={addCategoryAction} className="grid gap-2 rounded-xl bg-white p-3 shadow sm:grid-cols-4">
-          <input name="name" placeholder="Category name" required className="rounded border p-2 sm:col-span-2" />
-          <select name="type" className="rounded border p-2">
-            <option value="EXPENSE">Expense</option>
-            <option value="INCOME">Income</option>
-          </select>
-          <input name="color" type="color" defaultValue="#6366f1" className="h-10 w-full rounded border p-1" />
-          <button className="rounded bg-indigo-600 p-2 text-white hover:bg-indigo-700 sm:col-span-4">
-            Add category
-          </button>
+        <form action={addCategoryAction} className="card space-y-4 self-start p-5 lg:col-span-2">
+          <h3 className="text-base font-semibold">Add a category</h3>
+          <div>
+            <label htmlFor="cat-name" className="field-label">Name</label>
+            <input id="cat-name" name="name" required placeholder="e.g. Pet care" className="input" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="cat-type" className="field-label">Type</label>
+              <select id="cat-type" name="type" className="input" defaultValue="EXPENSE">
+                <option value="EXPENSE">Expense</option>
+                <option value="INCOME">Income</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="cat-color" className="field-label">Colour</label>
+              <input
+                id="cat-color"
+                name="color"
+                type="color"
+                defaultValue="#0e4f4a"
+                className="h-10 w-full cursor-pointer rounded-lg border border-line bg-surface p-1"
+              />
+            </div>
+          </div>
+          <SubmitButton pendingText="Adding…">Add category</SubmitButton>
         </form>
       </section>
     </main>
