@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatINR, formatShortDate } from "@/lib/format";
 import CopyButton from "@/components/CopyButton";
+import UpcomingBills from "@/components/UpcomingBills";
 
 export const metadata: Metadata = { title: "Overview" };
 
@@ -196,6 +197,8 @@ export default async function DashboardPage() {
               </ul>
             )}
           </section>
+
+          <UpcomingBills householdId={householdId} />
 
           {/* Household */}
           <section className="card p-5" aria-labelledby="house-heading">

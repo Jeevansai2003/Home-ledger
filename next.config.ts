@@ -20,7 +20,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
-      ...["dashboard", "transactions", "budgets", "settings", "account"].map((p) => ({
+      ...["dashboard", "transactions", "budgets", "settings", "account", "bills"].map((p) => ({
         source: `/${p}/:path*`,
         headers: [noStore],
       })),
@@ -29,3 +29,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+

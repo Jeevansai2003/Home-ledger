@@ -2,14 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ArrowLeftRight, PiggyBank, Landmark, ShieldCheck } from "lucide-react";
+import {
+  LayoutDashboard,
+  ArrowLeftRight,
+  PiggyBank,
+  CalendarClock,
+  Landmark,
+  ShieldCheck,
+} from "lucide-react";
 
 const items = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
-  { href: "/budgets", label: "Budgets", icon: PiggyBank },
-  { href: "/settings", label: "Accounts", icon: Landmark },
-  { href: "/account", label: "Security", icon: ShieldCheck },
+  { href: "/dashboard", label: "Overview", short: "Home", icon: LayoutDashboard },
+  { href: "/transactions", label: "Transactions", short: "Ledger", icon: ArrowLeftRight },
+  { href: "/budgets", label: "Budgets", short: "Budgets", icon: PiggyBank },
+  { href: "/bills", label: "Bills", short: "Bills", icon: CalendarClock },
+  { href: "/settings", label: "Accounts", short: "Accounts", icon: Landmark },
+  { href: "/account", label: "Security", short: "Security", icon: ShieldCheck },
 ];
 
 export default function NavLinks({ variant }: { variant: "sidebar" | "tabs" }) {
@@ -43,20 +51,21 @@ export default function NavLinks({ variant }: { variant: "sidebar" | "tabs" }) {
   }
 
   return (
-    <ul className="grid grid-cols-5">
-      {items.map(({ href, label, icon: Icon }) => {
+    <ul className="grid grid-cols-6">
+      {items.map(({ href, short, label, icon: Icon }) => {
         const active = isActive(href);
         return (
           <li key={href}>
             <Link
               href={href}
+              aria-label={label}
               aria-current={active ? "page" : undefined}
-              className={`flex flex-col items-center gap-1 py-2.5 text-[11px] transition-colors ${
+              className={`flex flex-col items-center gap-1 py-2.5 text-[10px] transition-colors ${
                 active ? "font-semibold text-brand" : "text-muted"
               }`}
             >
               <Icon size={20} aria-hidden="true" />
-              {label}
+              {short}
             </Link>
           </li>
         );
