@@ -7,6 +7,7 @@ import {
   ArrowLeftRight,
   PiggyBank,
   CalendarClock,
+  TrendingUp,
   Landmark,
   ShieldCheck,
 } from "lucide-react";
@@ -14,6 +15,7 @@ import {
 const items = [
   { href: "/dashboard", label: "Overview", short: "Home", icon: LayoutDashboard },
   { href: "/transactions", label: "Transactions", short: "Ledger", icon: ArrowLeftRight },
+  { href: "/insights", label: "Insights", short: "Insights", icon: TrendingUp },
   { href: "/budgets", label: "Budgets", short: "Budgets", icon: PiggyBank },
   { href: "/bills", label: "Bills", short: "Bills", icon: CalendarClock },
   { href: "/settings", label: "Accounts", short: "Accounts", icon: Landmark },
@@ -51,7 +53,7 @@ export default function NavLinks({ variant }: { variant: "sidebar" | "tabs" }) {
   }
 
   return (
-    <ul className="grid grid-cols-6">
+    <ul className="grid grid-cols-7">
       {items.map(({ href, short, label, icon: Icon }) => {
         const active = isActive(href);
         return (
