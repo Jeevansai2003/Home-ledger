@@ -1,9 +1,10 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import { cookies, headers } from "next/headers";
 import { prisma } from "./prisma";
+import { SERVER_IDLE_LIMIT_MS, TOUCH_EVERY_MS } from "./idle";
 
 const COOKIE = "ledger_session";
-const MAX_AGE_SEC = 60 * 60 * 24 * 7; // 7 days
+const MAX_AGE_SEC = 60 * 60 * 24 * 7; // absolute maximum: 7 days
 
 function getKey() {
   const secret = process.env.SESSION_SECRET;
@@ -16,8 +17,15 @@ export async function createSession(userId: string) {
   const userAgent = (await headers()).get("user-agent")?.slice(0, 200) ?? null;
   const now = Date.now();
 
-  // Tidy up expired sessions
-  await prisma.session.deleteMany({ where: { expiresAt: { lt: new Date(now) } } });
+  // Tidy up expired and idle sessions
+  await prisma.session.deleteMany({
+    where: {
+      OR: [
+        { expiresAt: { lt: new Date(now) } },
+        { lastActiveAt: { lt: new Date(now - SERVER_IDLE_LIMIT_MS) } },
+      ],
+    },
+  });
 
   const session = await prisma.session.create({
     data: { userId, userAgent, expiresAt: new Date(now + MAX_AGE_SEC * 1000) },
@@ -40,7 +48,7 @@ export async function createSession(userId: string) {
   });
 }
 
-// Valid only if the signature is good AND the session row still exists.
+// Valid only if the signature is good, the session row exists, and it has not been idle too long.
 export async function readSession(): Promise<{ userId: string; sessionId: string } | null> {
   const token = (await cookies()).get(COOKIE)?.value;
   if (!token) return null;
@@ -58,6 +66,17 @@ export async function readSession(): Promise<{ userId: string; sessionId: string
 
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session || session.userId !== userId || session.expiresAt < new Date()) return null;
+
+  const now = Date.now();
+  const idleFor = now - session.lastActiveAt.getTime();
+
+  if (idleFor > SERVER_IDLE_LIMIT_MS) {
+    await prisma.session.deleteMany({ where: { id: session.id } });
+    return null;
+  }
+  if (idleFor > TOUCH_EVERY_MS) {
+    await prisma.session.update({ where: { id: session.id }, data: { lastActiveAt: new Date(now) } });
+  }
 
   return { userId, sessionId };
 }

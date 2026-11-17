@@ -164,8 +164,10 @@ model Session {
   userAgent String?
   createdAt DateTime @default(now())
   expiresAt DateTime
+  lastActiveAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
+
