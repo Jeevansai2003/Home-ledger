@@ -1,6 +1,7 @@
 import { LogOut } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { logoutAction } from "@/app/actions/auth";
+import IdleGuard from "./IdleGuard";
 import Logo from "./Logo";
 import NavLinks from "./NavLinks";
 
@@ -70,6 +71,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       >
         <NavLinks variant="tabs" />
       </nav>
+
+      {/* Signs you out after a period of inactivity */}
+      <IdleGuard />
     </div>
   );
 }

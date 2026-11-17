@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Clock } from "lucide-react";
 import { loginAction } from "@/app/actions/auth";
 import AuthShell from "@/components/AuthShell";
 import PasswordInput from "@/components/PasswordInput";
@@ -11,9 +11,9 @@ export const metadata: Metadata = { title: "Sign in" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; reason?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, reason } = await searchParams;
 
   return (
     <AuthShell
@@ -29,6 +29,13 @@ export default async function LoginPage({
       }
     >
       <form action={loginAction} className="space-y-5">
+        {reason === "timeout" && !error && (
+          <div role="status" className="flex gap-2 rounded-lg border border-brand/20 bg-brand-soft px-3 py-2.5 text-sm text-brand">
+            <Clock size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span>You were signed out because you were inactive. Please sign in again.</span>
+          </div>
+        )}
+
         {error && (
           <div role="alert" className="alert-error flex gap-2">
             <AlertCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
