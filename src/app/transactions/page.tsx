@@ -26,7 +26,7 @@ export default async function TransactionsPage({
   const month = isValidMonth(sp.month) ? sp.month : currentMonth();
   const { start, end } = monthRange(month);
 
-  const [transactions, categories, accounts, members] = await Promise.all([
+  const [transactions, categories, accounts, members, latest] = await Promise.all([
     prisma.transaction.findMany({
       where: { householdId, date: { gte: start, lt: end } },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
@@ -35,6 +35,11 @@ export default async function TransactionsPage({
     prisma.category.findMany({ where: { householdId }, orderBy: { name: "asc" } }),
     prisma.account.findMany({ where: { householdId }, orderBy: { name: "asc" } }),
     prisma.user.findMany({ where: { householdId }, orderBy: { name: "asc" } }),
+    prisma.transaction.findFirst({
+      where: { householdId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    }),
   ]);
 
   const income = transactions.filter((t) => t.type === "INCOME").reduce((s, t) => s + Number(t.amount), 0);
@@ -63,6 +68,7 @@ export default async function TransactionsPage({
         <section className="card self-start p-5 lg:sticky lg:top-6 lg:order-2 lg:col-span-2" aria-labelledby="add-heading">
           <h2 id="add-heading" className="mb-4 text-base font-semibold">Add a transaction</h2>
           <TransactionForm
+            key={latest?.id ?? "empty"} // a new transaction gives a new key, which resets the form
             action={addTransactionAction}
             categories={categories.map((c) => ({ id: c.id, name: c.name, type: c.type }))}
             accounts={accounts.map((a) => ({ id: a.id, name: a.name }))}

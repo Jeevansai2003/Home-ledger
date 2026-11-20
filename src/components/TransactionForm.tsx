@@ -49,12 +49,14 @@ export default function TransactionForm({
   const startType: TxType = categories.find((c) => c.id === defaults?.categoryId)?.type ?? "EXPENSE";
   const [type, setType] = useState<TxType>(startType);
   const [categoryId, setCategoryId] = useState(defaults?.categoryId ?? "");
+  const [fieldsKey, setFieldsKey] = useState(0); // changing this empties every field
   const visible = categories.filter((c) => c.type === type);
 
   function pickType(next: TxType) {
     if (next === type) return;
     setType(next);
     setCategoryId("");
+    if (!defaults) setFieldsKey((k) => k + 1); // new transaction: start from a clean form
   }
 
   return (
@@ -85,6 +87,7 @@ export default function TransactionForm({
         ))}
       </div>
 
+      <div key={fieldsKey} className="space-y-4">
       <div>
         <label htmlFor="tx-amount" className="field-label">Amount</label>
         <div className="relative">
@@ -151,6 +154,8 @@ export default function TransactionForm({
       <div>
         <label htmlFor="tx-note" className="field-label">Note <span className="font-normal text-muted">(optional)</span></label>
         <input id="tx-note" name="note" maxLength={120} defaultValue={defaults?.note} placeholder="e.g. Weekly vegetables" className="input" />
+      </div>
+
       </div>
 
       <SubmitButton pendingText={pendingText}>{submitLabel}</SubmitButton>
