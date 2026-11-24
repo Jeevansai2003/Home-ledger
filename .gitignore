@@ -43,3 +43,6 @@ next-env.d.ts
 place.ps1
 /scripts/
 backup-*.sql
+
+/test-results/
+/playwright-report/

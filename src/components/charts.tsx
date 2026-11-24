@@ -198,3 +198,159 @@ export function PaceChart({
     </svg>
   );
 }
+
+// ----- Added: line chart by month, donut and stacked bars -----
+
+function domainFor(values: number[]) {
+  const hasPos = values.some((v) => v > 0);
+  const hasNeg = values.some((v) => v < 0);
+  const hi = hasPos ? niceMax(Math.max(...values)) : hasNeg ? 0 : 1000;
+  const lo = hasNeg ? -niceMax(-Math.min(...values)) : 0;
+  const ticks = lo < 0 ? [lo, 0, ...(hi > 0 ? [hi] : [])] : [0, 1, 2, 3, 4].map((i) => (hi / 4) * i);
+  return { lo, hi, ticks };
+}
+
+// One line per series, one point per month. Handles values below zero.
+export function LineChartMonths({
+  labels,
+  series,
+  ariaLabel,
+}: {
+  labels: { short: string; title: string }[];
+  series: { name: string; stroke: string; fill: string; values: number[] }[];
+  ariaLabel: string;
+}) {
+  const { lo, hi, ticks } = domainFor(series.flatMap((s) => s.values));
+  const y = (v: number) => M.top + INNER_H - ((v - lo) / (hi - lo || 1000)) * INNER_H;
+  const band = INNER_W / labels.length;
+  const x = (i: number) => M.left + band * i + band / 2;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={ariaLabel} className="h-auto w-full">
+      <GridLines ticks={ticks} y={y} />
+      {labels.map((l, i) => (
+        <text key={i} x={x(i)} y={H - 9} textAnchor="middle" className="fill-muted text-[11px]">
+          {l.short}
+        </text>
+      ))}
+      {series.map((s) => (
+        <g key={s.name}>
+          <path
+            d={`M ${s.values.map((v, i) => `${x(i)},${y(v)}`).join(" L ")}`}
+            fill="none"
+            strokeWidth={2.5}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            className={s.stroke}
+          />
+          {s.values.map((v, i) => (
+            <circle key={i} cx={x(i)} cy={y(v)} r={4} className={s.fill}>
+              <title>{`${labels[i].title}: ${s.name} ${formatINR(v)}`}</title>
+            </circle>
+          ))}
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+// Share of a total, as a ring
+export function DonutChart({
+  slices,
+  total,
+  centerLabel,
+  ariaLabel,
+}: {
+  slices: { name: string; value: number; color: string; title: string }[];
+  total: number;
+  centerLabel: string;
+  ariaLabel: string;
+}) {
+  const size = 220;
+  const c = size / 2;
+  const r = 82;
+  const stroke = 30;
+  const circumference = 2 * Math.PI * r;
+  const gap = slices.length > 1 ? 2 : 0;
+  const starts = slices.map((_, i) => slices.slice(0, i).reduce((s, x) => s + x.value, 0));
+
+  return (
+    <svg viewBox={`0 0 ${size} ${size}`} role="img" aria-label={ariaLabel} className="h-auto w-full max-w-[220px]">
+      <circle cx={c} cy={c} r={r} fill="none" strokeWidth={stroke} className="stroke-canvas" />
+      {total > 0 &&
+        slices.map((s, i) => {
+          const length = (s.value / total) * circumference;
+          const dash = Math.max(0, length - gap);
+          const offset = (starts[i] / total) * circumference;
+          return (
+            <circle
+              key={i}
+              cx={c}
+              cy={c}
+              r={r}
+              fill="none"
+              stroke={s.color}
+              strokeWidth={stroke}
+              strokeDasharray={`${dash} ${circumference - dash}`}
+              strokeDashoffset={-offset}
+              transform={`rotate(-90 ${c} ${c})`}
+            >
+              <title>{s.title}</title>
+            </circle>
+          );
+        })}
+      <text x={c} y={c - 2} textAnchor="middle" className="fill-ink text-[20px] font-semibold">
+        {compactINR(total)}
+      </text>
+      <text x={c} y={c + 18} textAnchor="middle" className="fill-muted text-[11px]">
+        {centerLabel}
+      </text>
+    </svg>
+  );
+}
+
+// One bar per month, split into coloured parts (for example by category)
+export function StackedBars({
+  data,
+  ariaLabel,
+}: {
+  data: { label: string; title: string; parts: { name: string; color: string; value: number }[] }[];
+  ariaLabel: string;
+}) {
+  const totals = data.map((d) => d.parts.reduce((s, p) => s + p.value, 0));
+  const max = niceMax(Math.max(0, ...totals));
+  const y = (v: number) => M.top + INNER_H - (v / max) * INNER_H;
+  const ticks = [0, 1, 2, 3, 4].map((i) => (max / 4) * i);
+  const band = INNER_W / data.length;
+  const barW = Math.min(40, band * 0.6);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={ariaLabel} className="h-auto w-full">
+      <GridLines ticks={ticks} y={y} />
+      {data.map((d, i) => {
+        const cx = M.left + band * i + band / 2;
+        return (
+          <g key={i}>
+            {d.parts.map((p, k) => {
+              const before = d.parts.slice(0, k).reduce((s, q) => s + q.value, 0);
+              const top = y(before + p.value);
+              return (
+                <rect key={k} x={cx - barW / 2} y={top} width={barW} height={Math.max(0, y(before) - top)} fill={p.color}>
+                  <title>{`${d.title}: ${p.name} ${formatINR(p.value)}`}</title>
+                </rect>
+              );
+            })}
+            {data.length <= 8 && totals[i] > 0 && (
+              <text x={cx} y={y(totals[i]) - 5} textAnchor="middle" className="fill-ink text-[11px] font-medium">
+                {compactINR(totals[i])}
+              </text>
+            )}
+            <text x={cx} y={H - 9} textAnchor="middle" className="fill-muted text-[11px]">
+              {d.label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
