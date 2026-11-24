@@ -7,7 +7,10 @@ import { currentMonth, formatINR, isValidMonth, monthLabel, monthRange, shiftMon
 import {
   RANGES, change, daysInMonth, monthOf, monthsBack, shortMonth, shortMonthYear, tone, valueAt,
 } from "@/lib/insights";
-import { GroupedBarChart, NetBars, PaceChart } from "@/components/charts";
+import {
+  DonutChart, GroupedBarChart, LineChartMonths, NetBars, PaceChart, StackedBars,
+} from "@/components/charts";
+import ChartTabs from "@/components/ChartTabs";
 import PageHeader from "@/components/PageHeader";
 
 export const metadata: Metadata = { title: "Insights" };
@@ -40,7 +43,7 @@ export default async function InsightsPage({
   const [rangeRows, cmpRows, categories] = await Promise.all([
     prisma.transaction.findMany({
       where: { householdId, date: { gte: rangeStart, lt: rangeEnd } },
-      select: { date: true, type: true, amount: true },
+      select: { date: true, type: true, amount: true, categoryId: true },
     }),
     prisma.transaction.findMany({
       where: {
@@ -54,12 +57,21 @@ export default async function InsightsPage({
 
   // Month by month totals
   const monthly = new Map(months.map((m) => [m, { income: 0, expense: 0 }]));
+  const perMonthCat = new Map<string, Map<string, number>>();
+  const rangeCatTotals = new Map<string, number>();
   for (const r of rangeRows) {
     const entry = monthly.get(monthOf(r.date));
     if (!entry) continue;
     const v = Number(r.amount);
     if (r.type === "INCOME") entry.income += v;
-    else entry.expense += v;
+    else {
+      entry.expense += v;
+      const month = monthOf(r.date);
+      const cats = perMonthCat.get(month) ?? new Map<string, number>();
+      cats.set(r.categoryId, (cats.get(r.categoryId) ?? 0) + v);
+      perMonthCat.set(month, cats);
+      rangeCatTotals.set(r.categoryId, (rangeCatTotals.get(r.categoryId) ?? 0) + v);
+    }
   }
   const withData = months.filter((m) => {
     const v = monthly.get(m)!;
@@ -135,6 +147,43 @@ export default async function InsightsPage({
   const paceB = valueAt(B.cumulative, paceDay);
   const paceA = valueAt(A.cumulative, paceDay);
 
+  const monthLabels = months.map((m) => ({ short: shortMonth(m), title: monthLabel(m) }));
+  const runningSaved = months.reduce<number[]>((acc, m) => {
+    const v = monthly.get(m)!;
+    acc.push((acc[acc.length - 1] ?? 0) + v.income - v.expense);
+    return acc;
+  }, []);
+
+  // Share of spending in the compared month (donut)
+  const mixRows = [...B.cats.entries()]
+    .map(([id, value]) => ({
+      name: catMap.get(id)?.name ?? "Unknown",
+      color: catMap.get(id)?.color ?? "#5b6966",
+      value,
+    }))
+    .sort((a, b) => b.value - a.value);
+  const mix = mixRows.slice(0, 6);
+  const mixRest = mixRows.slice(6).reduce((s, r) => s + r.value, 0);
+  if (mixRest > 0) mix.push({ name: "Other categories", color: "#9aa5a2", value: mixRest });
+
+  // Top 5 categories month by month (stacked bars)
+  const topCatIds = [...rangeCatTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id]) => id);
+  const stackedData = months.map((m) => {
+    const cats = perMonthCat.get(m) ?? new Map<string, number>();
+    const parts = topCatIds.map((id) => ({
+      name: catMap.get(id)?.name ?? "Unknown",
+      color: catMap.get(id)?.color ?? "#5b6966",
+      value: cats.get(id) ?? 0,
+    }));
+    const other = monthly.get(m)!.expense - parts.reduce((s, x) => s + x.value, 0);
+    if (other > 0.5) parts.push({ name: "Everything else", color: "#9aa5a2", value: other });
+    return { label: shortMonth(m), title: monthLabel(m), parts };
+  });
+  const stackedLegend = [
+    ...topCatIds.map((id) => ({ name: catMap.get(id)?.name ?? "Unknown", color: catMap.get(id)?.color ?? "#5b6966" })),
+    { name: "Everything else", color: "#9aa5a2" },
+  ];
+
   const compareCards = [
     { label: "Income", a: A.income, b: B.income, goodWhenUp: true },
     { label: "Spent", a: A.expense, b: B.expense, goodWhenUp: false },
@@ -183,19 +232,44 @@ export default async function InsightsPage({
               </ul>
             </div>
             <div className="mt-4">
-              <GroupedBarChart
-                ariaLabel={`Income and spending for each of the last ${range} months`}
-                aClass="fill-income"
-                bClass="fill-expense"
-                data={months.map((m) => {
-                  const v = monthly.get(m)!;
-                  return {
-                    label: shortMonth(m),
-                    title: `${monthLabel(m)}: income ${formatINR(v.income)}, spent ${formatINR(v.expense)}`,
-                    a: v.income,
-                    b: v.expense,
-                  };
-                })}
+              <ChartTabs
+                label="Income and spending chart type"
+                tabs={[
+                  {
+                    id: "bars",
+                    label: "Bars",
+                    content: (
+                      <GroupedBarChart
+                        ariaLabel={`Income and spending for each of the last ${range} months`}
+                        aClass="fill-income"
+                        bClass="fill-expense"
+                        data={months.map((m) => {
+                          const v = monthly.get(m)!;
+                          return {
+                            label: shortMonth(m),
+                            title: `${monthLabel(m)}: income ${formatINR(v.income)}, spent ${formatINR(v.expense)}`,
+                            a: v.income,
+                            b: v.expense,
+                          };
+                        })}
+                      />
+                    ),
+                  },
+                  {
+                    id: "lines",
+                    label: "Lines",
+                    content: (
+                      <LineChartMonths
+                        ariaLabel={`Income and spending trend for the last ${range} months`}
+                        labels={monthLabels}
+                        series={[
+                          { name: "Income", stroke: "stroke-income", fill: "fill-income", values: months.map((m) => monthly.get(m)!.income) },
+                          { name: "Spent", stroke: "stroke-expense", fill: "fill-expense", values: months.map((m) => monthly.get(m)!.expense) },
+                        ]}
+                      />
+                    ),
+                  },
+                ]}
               />
             </div>
 
@@ -239,13 +313,35 @@ export default async function InsightsPage({
             <h2 id="net-heading" className="text-base font-semibold">Saved each month</h2>
             <p className="mt-1 text-sm text-muted">Income minus spending. Red bars mean you spent more than you earned.</p>
             <div className="mt-4">
-              <NetBars
-                ariaLabel={`Money saved in each of the last ${range} months`}
-                data={months.map((m) => {
-                  const v = monthly.get(m)!;
-                  const net = v.income - v.expense;
-                  return { label: shortMonth(m), title: `${monthLabel(m)}: ${net >= 0 ? "saved" : "overspent by"} ${formatINR(Math.abs(net))}`, value: net };
-                })}
+              <ChartTabs
+                label="Savings chart type"
+                tabs={[
+                  {
+                    id: "monthly",
+                    label: "Each month",
+                    content: (
+                      <NetBars
+                        ariaLabel={`Money saved in each of the last ${range} months`}
+                        data={months.map((m) => {
+                          const v = monthly.get(m)!;
+                          const net = v.income - v.expense;
+                          return { label: shortMonth(m), title: `${monthLabel(m)}: ${net >= 0 ? "saved" : "overspent by"} ${formatINR(Math.abs(net))}`, value: net };
+                        })}
+                      />
+                    ),
+                  },
+                  {
+                    id: "running",
+                    label: "Running total",
+                    content: (
+                      <LineChartMonths
+                        ariaLabel={`Total saved so far across the last ${range} months`}
+                        labels={monthLabels}
+                        series={[{ name: "Saved so far", stroke: "stroke-brand", fill: "fill-brand", values: runningSaved }]}
+                      />
+                    ),
+                  },
+                ]}
               />
             </div>
           </section>
@@ -328,6 +424,74 @@ export default async function InsightsPage({
           })}
         </ul>
 
+        {/* Where the money goes */}
+        <div className="card p-5">
+          <h3 className="text-base font-semibold">Where the money goes</h3>
+          <p className="mt-1 text-sm text-muted">
+            Switch between the split for {monthLabel(m2)} and how your top categories changed over the last {range} months.
+          </p>
+          <div className="mt-4">
+            <ChartTabs
+              label="Spending breakdown chart type"
+              tabs={[
+                {
+                  id: "donut",
+                  label: "Share of spending",
+                  content:
+                    B.expense > 0 ? (
+                      <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
+                        <DonutChart
+                          ariaLabel={`Share of spending by category in ${monthLabel(m2)}`}
+                          total={B.expense}
+                          centerLabel={shortMonthYear(m2)}
+                          slices={mix.map((s) => ({
+                            ...s,
+                            title: `${s.name}: ${formatINR(s.value)} (${Math.round((s.value / B.expense) * 100)}%)`,
+                          }))}
+                        />
+                        <ul className="w-full flex-1 space-y-2">
+                          {mix.map((s, i) => (
+                            <li key={`${s.name}-${i}`} className="flex items-center justify-between gap-3 text-sm">
+                              <span className="flex min-w-0 items-center gap-2">
+                                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color }} aria-hidden="true" />
+                                <span className="truncate">{s.name}</span>
+                              </span>
+                              <span className="num shrink-0 text-muted">
+                                {formatINR(s.value)} ({Math.round((s.value / B.expense) * 100)}%)
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <p className="py-8 text-center text-sm text-muted">No spending recorded in {monthLabel(m2)}.</p>
+                    ),
+                },
+                {
+                  id: "stacked",
+                  label: "Over time",
+                  content: (
+                    <div>
+                      <StackedBars
+                        ariaLabel={`Spending by top categories for each of the last ${range} months`}
+                        data={stackedData}
+                      />
+                      <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted">
+                        {stackedLegend.map((l, i) => (
+                          <li key={`${l.name}-${i}`} className="flex items-center gap-1.5">
+                            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: l.color }} aria-hidden="true" />
+                            {l.name}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          </div>
+        </div>
+
         {/* Pace */}
         <div className="card p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -360,10 +524,10 @@ export default async function InsightsPage({
             <p className="mt-3 text-sm text-muted">No expenses in either month.</p>
           ) : (
             <ul className="mt-2 divide-y divide-line">
-              {shown.map((r) => {
+              {shown.map((r, i) => {
                 const ch = change(r.a, r.b);
                 return (
-                  <li key={r.name} className="py-3">
+                  <li key={`${r.name}-${i}`} className="py-3">
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="flex min-w-0 items-center gap-2 font-medium">
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: r.color }} aria-hidden="true" />
