@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import { Figtree, Bricolage_Grotesque } from "next/font/google";
+// Fonts are bundled with the app (no internet needed while running or building)
+import "@fontsource-variable/figtree";
+import "@fontsource-variable/bricolage-grotesque";
 import "./globals.css";
-
-const figtree = Figtree({ variable: "--font-figtree", subsets: ["latin"] });
-const bricolage = Bricolage_Grotesque({ variable: "--font-bricolage", subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: { default: "Home Ledger", template: "%s | Home Ledger" },
@@ -12,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-scroll-behavior="smooth" className={`${figtree.variable} ${bricolage.variable}`}>
+    <html lang="en" data-scroll-behavior="smooth">
       <body>{children}</body>
     </html>
   );

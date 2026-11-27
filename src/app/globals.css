@@ -22,8 +22,8 @@
   --color-warn: #a86b12;
   --color-warn-soft: #fcf3df;
 
-  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Figtree Variable", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-display: "Bricolage Grotesque Variable", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
 }
 
 @layer base {
